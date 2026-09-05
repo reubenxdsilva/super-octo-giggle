@@ -85,6 +85,13 @@
   }
   .empty h2{font-family:var(--display);font-weight:500;color:var(--ink);font-size:24px;margin:0 0 8px;}
   .empty p{margin:0 auto;max-width:32ch;line-height:1.5;font-size:14.5px;}
+  .empty .refresh{
+    margin-top:22px;background:var(--yes);color:#fff;border-color:transparent;
+    width:auto;padding:12px 22px;
+  }
+  .empty .refresh:disabled{opacity:.4;cursor:default;}
+  .empty .seeds{margin-top:12px;font-size:12.5px;color:var(--muted);}
+  .empty .seeds b{color:var(--ink);font-weight:600;}
 
   /* ---- Shortlist ---- */
   .list{margin-top:10px;padding-bottom:16px;}
@@ -166,7 +173,7 @@
 
     <!-- SHORTLIST -->
     <section class="view" id="view-shortlist">
-      <p class="seedhint">Star the names you love most — starred names act as seeds and nudge which names you see next. Removing a name takes it off the list and it won't come back.</p>
+      <p class="seedhint">Star the names you love most — starred names act as seeds: they nudge which names you see next, and once the list runs out they're what new names get blended from. Removing a name takes it off the list and it won't come back.</p>
       <button class="textbtn" id="btnExport" style="display:none;margin:0 4px 14px;">Export shortlist</button>
       <div class="list" id="shortlistList"></div>
     </section>
@@ -265,13 +272,17 @@ let state = load();
 function load(){
   try{
     const s = JSON.parse(localStorage.getItem(KEY));
-    if(s && s.settings) return s;
+    if(s && s.settings){
+      if(!Array.isArray(s.generated)) s.generated = [];
+      return s;
+    }
   }catch(e){}
   return {
     settings:{ lastName:DEFAULT_LAST, startLetters:"", sylMin:0, sylMax:0 },
     shortlist:[],       // [{name, starred}]
     discarded:[],       // [name]
     removed:[],         // [name] (taken off shortlist; never repeat)
+    generated:[],       // [[name, syllables]] blended from starred seeds
     current:null,
     lastAction:null     // {type:'yes'|'no', name}
   };
@@ -339,8 +350,7 @@ function scoreName(entry, flow, seeds){
 
 function seedList(){
   return state.shortlist.filter(x=>x.starred).map(x=>{
-    const e = NAMES.find(n=>n[0]===x.name);
-    const syl = e ? e[1] : estSyllables(x.name);
+    const syl = entryFor(x.name)[1];
     return { start:x.name[0].toUpperCase(), syl, last2:x.name.slice(-2).toLowerCase(), len:x.name.length };
   });
 }
@@ -349,7 +359,7 @@ function candidates(){
   const seen = seenSet();
   const sl = (state.settings.startLetters||"").toLowerCase().replace(/[^a-zäöü]/g,"");
   const mn = state.settings.sylMin||0, mx = state.settings.sylMax||0;
-  return NAMES.filter(([name,syl])=>{
+  return pool().filter(([name,syl])=>{
     if(seen.has(name)) return false;
     if(sl && !sl.includes(name[0].toLowerCase())) return false;
     if(mn && syl < mn) return false;
@@ -369,6 +379,153 @@ function pickNext(){
     if(s > bestScore){ bestScore = s; best = c; }
   }
   state.current = best ? best[0] : null;
+}
+
+/* ---------------- Blending new names from starred seeds ----------------
+   A blend keeps the way a starred name opens and borrows the rest of its sound
+   from another curated name — either the rime (Z + ophie) or the final syllable
+   (Ly + ra). Both halves come from real names, so the result is new but still
+   shaped like one. */
+const DIPHTHONGS = ["ai","ay","ei","ey","au","eu","äu","ee","ie","oo","ou"];
+const GEN_BATCH = 14;
+
+function pool(){ return NAMES.concat(state.generated); }
+function entryFor(name){
+  return pool().find(n=>n[0]===name) || [name, genSyllables(name)];
+}
+function isGenerated(name){ return state.generated.some(n=>n[0]===name); }
+
+// Syllables for a blended name: vowel groups, where a pair of vowels counts
+// once only if it is a German diphthong (Fay = 1, Sophie = 2, Zoe = 2).
+function genSyllables(name){
+  let count = 0, group = "";
+  const flush = ()=>{
+    if(!group) return;
+    count += (group.length===1 || DIPHTHONGS.includes(group)) ? 1 : 2;
+    group = "";
+  };
+  for(const ch of (name||"").toLowerCase()){
+    if(isVowel(ch)) group += ch; else flush();
+  }
+  flush();
+  return Math.max(1, count);
+}
+
+// Leading consonant cluster ("Sophie" -> "s", "Amelie" -> "").
+function onsetOf(name){
+  const w = (name||"").toLowerCase();
+  let i = 0;
+  while(i < w.length && !isVowel(w[i])) i++;
+  return i >= w.length ? null : w.slice(0, i);
+}
+// Opening through the first vowel *sound* ("Lynn" -> "ly", "Fay" -> "fay").
+// Two vowels are kept together only as a diphthong: "Zoe" opens on "zo", not
+// "zoe", because its o and e are separate syllables.
+function openingOf(name){
+  const w = (name||"").toLowerCase();
+  const onset = onsetOf(name);
+  if(onset === null) return null;
+  let j = onset.length;
+  while(j < w.length && isVowel(w[j])) j++;
+  const group = w.slice(onset.length, j);
+  const keep = (group.length === 1 || DIPHTHONGS.includes(group)) ? group : group[0];
+  return onset + keep;
+}
+// The final sound a name can lend ("Sophie" -> "phie", "Emilia" -> "lia").
+// A name whose last vowel has no consonant in front of it (Zoe) lends nothing.
+function tailOf(name){
+  const w = (name||"").toLowerCase();
+  let end = w.length;
+  while(end > 0 && !isVowel(w[end-1])) end--;        // trailing consonants
+  let vowel = end;
+  while(vowel > 0 && isVowel(w[vowel-1])) vowel--;   // last vowel group
+  let cons = vowel;
+  while(cons > 0 && !isVowel(w[cons-1])) cons--;     // consonants before it
+  if(cons === vowel || cons === 0) return null;      // nothing to lend, or the whole name
+  return w.slice(cons);
+}
+// Everything from the first vowel onward ("Sophie" -> "ophie").
+function rimeOf(name){
+  const onset = onsetOf(name);
+  return onset ? name.toLowerCase().slice(onset.length) : null;  // vowel-initial names have no rime to lend
+}
+// Borrowable sounds: at least a full syllable, at most two, so a blend lands
+// around 2-3 syllables instead of mangling a long name (no "Zarlotte").
+const RIMES = [...new Set(NAMES.map(n=>rimeOf(n[0])))]
+  .filter(r=>r && r.length>=3 && genSyllables(r)<=2);
+
+// An ending only grafts cleanly onto a vowel when it starts with one plain
+// consonant (or a doubled one, or ph/th) and finishes on a vowel or a soft
+// consonant: "ra", "phie", "lin" travel well, "hel" and "sme" do not.
+const TAIL_ONSET_OK = /^(?:ph|th|([bcdfgjklmnpqrstvwxz])\1?)[aeiouyäöü]/;
+const TAIL_END_OK = /[aeiouyäöünlst]$/;
+const TAILS = [...new Set(NAMES.map(n=>tailOf(n[0])))]
+  .filter(t=>t && t.length>=2 && genSyllables(t)<=2 && TAIL_ONSET_OK.test(t) && TAIL_END_OK.test(t));
+
+function isSpeakable(name){
+  const w = name.toLowerCase();
+  if(w.length < 4 || w.length > 9) return false;
+  if(!/[bcdfghjklmnpqrstvwxz]/.test(w)) return false;        // needs a consonant
+  if(/(.)\1\1/.test(w)) return false;                        // triple letter
+  if(/[bcdfghjklmnpqrstvwxz]{3,}/.test(w)) return false;     // consonant pile-up
+  if(/[aeiouyäöü]{3,}/.test(w)) return false;                // vowel pile-up
+  return true;
+}
+
+/* Build fresh names from the names starred right now. */
+function blendFromSeeds(starred, seeds, flow, exclude){
+  const made = new Map();
+  const add = raw=>{
+    if(!isSpeakable(raw)) return;
+    const name = raw[0].toUpperCase() + raw.slice(1);
+    if(exclude.has(name) || made.has(name)) return;
+    made.set(name, [name, genSyllables(name)]);
+  };
+
+  // Star's opening consonants + another name's rime: Z + ophie -> Zophie.
+  for(const onset of new Set(starred.map(onsetOf).filter(Boolean)))
+    for(const rime of RIMES) add(onset + rime);
+
+  // Star's first syllable + another name's ending: Ly + ra -> Lyra.
+  for(const opening of new Set(starred.map(openingOf).filter(Boolean))){
+    // A lone opening vowel needs a fuller ending to become a name ("Alia", not "Acie").
+    const needsTwoSyllables = !/[bcdfghjklmnpqrstvwxz]/.test(opening);
+    for(const tail of TAILS){
+      if(needsTwoSyllables && genSyllables(tail) < 2) continue;
+      add(opening + tail);
+    }
+  }
+
+  const scored = [...made.values()]
+    .map(entry=>({ entry, sc: scoreName(entry, flow, seeds) + Math.random()*0.8 }))
+    .sort((a,b)=>b.sc-a.sc);
+
+  const flowing = scored.filter(x=>x.sc > -50);
+  return (flowing.length ? flowing : scored).slice(0, GEN_BATCH).map(x=>x.entry);
+}
+
+/* Empty-state refresh: generate new names from the current stars.
+   Passed names are never brought back. */
+function refreshFromSeeds(){
+  const starred = state.shortlist.filter(x=>x.starred).map(x=>x.name);
+  if(!starred.length){
+    toast("Star a few names on your shortlist first");
+    return;
+  }
+  const exclude = seenSet();
+  pool().forEach(([name])=>exclude.add(name));
+
+  const fresh = blendFromSeeds(starred, seedList(), analyzeLastName(), exclude);
+  if(!fresh.length){
+    toast("No new blends from these stars — try starring different names");
+    return;
+  }
+  state.generated.push(...fresh);
+  state.current = null;
+  state.lastAction = null;
+  pickNext();
+  save(); renderAll();
+  toast(`${fresh.length} new names from ${starred.join(", ")}`);
 }
 
 /* ---------------- Actions ---------------- */
@@ -448,7 +605,8 @@ function exportShortlist(){
 }
 function resetAll(){
   if(!confirm("Clear your shortlist, discarded names and history? Your last name and settings stay.")) return;
-  state.shortlist = []; state.discarded = []; state.removed = []; state.current = null; state.lastAction = null;
+  state.shortlist = []; state.discarded = []; state.removed = []; state.generated = [];
+  state.current = null; state.lastAction = null;
   pickNext(); save(); renderAll();
 }
 
@@ -460,15 +618,23 @@ function renderSwipe(){
   deck.innerHTML = "";
   if(!state.current){ pickNext(); }
   if(!state.current){
+    const starred = state.shortlist.filter(x=>x.starred).map(x=>x.name);
+    const hint = starred.length
+      ? `Refresh to blend new names out of the ones you've starred.`
+      : `Star a few favorites on your shortlist, then refresh to blend new names from them.`;
+    const seedLine = starred.length
+      ? `<div class="seeds">Seeded by <b>${starred.join(", ")}</b></div>`
+      : "";
     deck.innerHTML = `<div class="empty">
       <h2>That's the whole list</h2>
-      <p>You've seen every name that fits. Loosen the filters in Settings, or check your shortlist.</p>
+      <p>${hint}</p>
+      ${seedLine}
+      <button class="textbtn refresh" id="btnRefresh" ${starred.length?"":"disabled"}>Refresh</button>
     </div>`;
     setActions(false);
     return;
   }
-  const e = NAMES.find(n=>n[0]===state.current);
-  const syl = e ? e[1] : "";
+  const syl = entryFor(state.current)[1];
   const card = document.createElement("div");
   card.className = "card";
   card.innerHTML = `
@@ -477,7 +643,7 @@ function renderSwipe(){
     <div class="fn">${state.current}</div>
     <div class="with">with</div>
     <div class="ln">${ln||"—"}</div>
-    <div class="meta">${syl} syllable${syl===1?"":"s"}</div>`;
+    <div class="meta">${syl} syllable${syl===1?"":"s"}${isGenerated(state.current)?" · blended from your stars":""}</div>`;
   deck.appendChild(card);
   setActions(true);
   attachDrag(card);
@@ -584,6 +750,9 @@ document.getElementById("btnNo").onclick = ()=>flyAndVote("no");
 document.getElementById("btnUndo").onclick = undo;
 document.getElementById("btnReset").onclick = resetAll;
 document.getElementById("btnExport").onclick = exportShortlist;
+deck.addEventListener("click", e=>{
+  if(e.target.id==="btnRefresh") refreshFromSeeds();
+});
 
 document.getElementById("lastName").addEventListener("input", e=>{
   state.settings.lastName = e.target.value;
@@ -606,6 +775,7 @@ document.querySelectorAll("nav button").forEach(btn=>{
     document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("view-"+btn.dataset.view).classList.add("active");
+    if(btn.dataset.view==="swipe") renderSwipe();
   };
 });
 
