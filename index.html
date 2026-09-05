@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>NameSwipe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F2F0F7;
+    --card:#FFFFFF;
+    --ink:#241F31;
+    --muted:#7C7690;
+    --line:#E4E0EC;
+    --yes:#B0466E;
+    --yes-soft:#F7E6ED;
+    --no:#5F6472;
+    --no-soft:#E9EAEF;
+    --star:#C79A3A;
+    --display:"Fraunces", Georgia, "Times New Roman", serif;
+    --ui:"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:var(--bg);color:var(--ink);font-family:var(--ui);
+    display:flex;justify-content:center;
+  }
+  #app{
+    width:100%;max-width:460px;min-height:100vh;
+    display:flex;flex-direction:column;position:relative;
+    padding:0 20px;
+  }
+  header{
+    padding:22px 4px 10px;display:flex;align-items:baseline;justify-content:space-between;
+  }
+  header .wordmark{font-family:var(--display);font-weight:600;font-size:26px;letter-spacing:.3px;}
+  header .count{font-size:13px;color:var(--muted);}
+  header .count b{color:var(--yes);font-weight:600;}
+
+  main{flex:1;position:relative;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* ---- Swipe view ---- */
+  #deck{position:relative;height:min(58vh,440px);margin-top:8px;}
+  .card{
+    position:absolute;inset:0;background:var(--card);border-radius:26px;
+    border:1px solid var(--line);
+    box-shadow:0 18px 40px -24px rgba(36,31,49,.45);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:28px;touch-action:none;cursor:grab;
+    user-select:none;
+  }
+  .card.behind{transform:scale(.94) translateY(14px);opacity:.55;box-shadow:none;}
+  .card .fn{font-family:var(--display);font-weight:500;font-size:clamp(46px,15vw,68px);line-height:1.02;}
+  .card .with{color:var(--muted);font-size:13px;margin:14px 0 4px;letter-spacing:.4px;}
+  .card .ln{font-family:var(--display);font-weight:400;font-size:clamp(24px,7vw,32px);color:var(--ink);opacity:.72;}
+  .card .meta{margin-top:20px;color:var(--muted);font-size:12.5px;}
+  .stamp{
+    position:absolute;top:26px;font-family:var(--display);font-weight:600;font-size:30px;
+    letter-spacing:1px;padding:4px 14px;border-radius:10px;border:2.5px solid;opacity:0;
+    transition:opacity .05s;
+  }
+  .stamp.yes{right:24px;color:var(--yes);border-color:var(--yes);transform:rotate(9deg);}
+  .stamp.no{left:24px;color:var(--no);border-color:var(--no);transform:rotate(-9deg);}
+
+  .actions{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:26px;}
+  .fab{
+    width:66px;height:66px;border-radius:50%;border:1px solid var(--line);background:var(--card);
+    font-size:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 18px -12px rgba(36,31,49,.5);transition:transform .12s ease;
+  }
+  .fab:active{transform:scale(.92);}
+  .fab.no{color:var(--no);}
+  .fab.yes{color:var(--yes);width:76px;height:76px;font-size:30px;}
+  .fab.undo{width:50px;height:50px;font-size:19px;color:var(--muted);}
+  .fab:disabled{opacity:.35;cursor:default;}
+
+  /* ---- Empty states ---- */
+  .empty{
+    text-align:center;color:var(--muted);padding:60px 20px;
+  }
+  .empty h2{font-family:var(--display);font-weight:500;color:var(--ink);font-size:24px;margin:0 0 8px;}
+  .empty p{margin:0 auto;max-width:32ch;line-height:1.5;font-size:14.5px;}
+
+  /* ---- Shortlist ---- */
+  .list{margin-top:10px;padding-bottom:16px;}
+  .row{
+    display:flex;align-items:center;gap:12px;background:var(--card);
+    border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:10px;
+  }
+  .row .name{flex:1;}
+  .row .name .fn{font-family:var(--display);font-size:22px;font-weight:500;line-height:1;}
+  .row .name .ln{color:var(--muted);font-size:12.5px;margin-top:3px;}
+  .iconbtn{
+    border:none;background:transparent;cursor:pointer;font-size:20px;padding:6px;border-radius:10px;color:var(--muted);
+  }
+  .iconbtn.star.on{color:var(--star);}
+  .iconbtn:active{background:var(--no-soft);}
+  .seedhint{color:var(--muted);font-size:12.5px;margin:2px 4px 14px;line-height:1.5;}
+
+  /* ---- Settings ---- */
+  .field{margin:0 4px 22px;}
+  .field label{display:block;font-weight:600;font-size:14px;margin-bottom:6px;}
+  .field .desc{color:var(--muted);font-size:12.5px;margin-bottom:10px;line-height:1.5;}
+  .field input, .field select{
+    font-family:var(--ui);font-size:16px;color:var(--ink);background:var(--card);
+    border:1px solid var(--line);border-radius:12px;padding:12px 14px;width:100%;
+  }
+  .field input:focus, .field select:focus{outline:2px solid var(--yes);border-color:transparent;}
+  .rangepair{display:flex;align-items:center;gap:10px;}
+  .rangepair span{color:var(--muted);font-size:13px;}
+  .rangepair select{flex:1;}
+  .textbtn{
+    background:transparent;border:1px solid var(--line);color:var(--no);border-radius:12px;
+    padding:12px 16px;font-family:var(--ui);font-size:14px;font-weight:500;cursor:pointer;width:100%;
+  }
+  .textbtn:active{background:var(--no-soft);}
+
+  /* ---- Bottom nav ---- */
+  nav{
+    position:sticky;bottom:0;display:flex;background:var(--bg);
+    padding:8px 0 max(10px,env(safe-area-inset-bottom));gap:6px;border-top:1px solid var(--line);
+  }
+  nav button{
+    flex:1;background:transparent;border:none;cursor:pointer;font-family:var(--ui);
+    font-size:12px;color:var(--muted);padding:8px 4px;display:flex;flex-direction:column;
+    align-items:center;gap:4px;border-radius:12px;
+  }
+  nav button .ic{font-size:20px;line-height:1;}
+  nav button.active{color:var(--ink);font-weight:600;}
+  nav button.active .ic{color:var(--yes);}
+  .badge{
+    display:inline-block;min-width:16px;font-size:10px;background:var(--yes);color:#fff;
+    border-radius:20px;padding:0 5px;line-height:16px;margin-left:2px;font-weight:600;
+  }
+  #toast{
+    position:fixed;left:50%;bottom:88px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#fff;padding:11px 18px;border-radius:12px;font-size:13.5px;
+    opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:20;
+    max-width:88%;text-align:center;
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="wordmark">NameSwipe</div>
+    <div class="count">Shortlist <b id="hdrCount">0</b></div>
+  </header>
+
+  <main>
+    <!-- SWIPE -->
+    <section class="view active" id="view-swipe">
+      <div id="deck"></div>
+      <div class="actions" id="actions">
+        <button class="fab no" id="btnNo" aria-label="No">✕</button>
+        <button class="fab undo" id="btnUndo" aria-label="Undo" disabled>↩</button>
+        <button class="fab yes" id="btnYes" aria-label="Yes">♥</button>
+      </div>
+    </section>
+
+    <!-- SHORTLIST -->
+    <section class="view" id="view-shortlist">
+      <p class="seedhint">Star the names you love most — starred names act as seeds and nudge which names you see next. Removing a name takes it off the list and it won't come back.</p>
+      <button class="textbtn" id="btnExport" style="display:none;margin:0 4px 14px;">Export shortlist</button>
+      <div class="list" id="shortlistList"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="view-settings">
+      <div class="field">
+        <label for="lastName">Last name</label>
+        <div class="desc">Shown with every first name so you can hear how the pair reads. Changing it re-tunes which names flow well.</div>
+        <input type="text" id="lastName" placeholder="Dsilva" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="startLetters">Starting letters</label>
+        <div class="desc">Only show names starting with these letters. Leave empty for all. Letters that clash with your last name are excluded by default.</div>
+        <input type="text" id="startLetters" placeholder="e.g. ael" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Syllables</label>
+        <div class="desc">Limit how long the first name sounds. Left open, the app already favors names that give a nice rhythm against your last name.</div>
+        <div class="rangepair">
+          <select id="sylMin"></select>
+          <span>to</span>
+          <select id="sylMax"></select>
+        </div>
+      </div>
+      <div class="field">
+        <button class="textbtn" id="btnReset">Reset all swipes and start over</button>
+      </div>
+    </section>
+  </main>
+
+  <nav>
+    <button class="active" data-view="swipe"><span class="ic">◉</span>Swipe</button>
+    <button data-view="shortlist"><span class="ic">♥</span>Shortlist<span class="badge" id="navBadge" style="display:none">0</span></button>
+    <button data-view="settings"><span class="ic">⚙</span>Settings</button>
+  </nav>
+  <div id="toast"></div>
+</div>
+
+<script>
+/* ---------------- Curated pool ----------------
+   Girl + unisex names, easy to pronounce in German.
+   [name, syllableCount]  (counts set for German pronunciation) */
+const NAMES = [
+  ["Amelie",3],["Anna",2],["Anni",2],["Antonia",4],["Ava",2],["Carla",2],["Carlotta",3],
+  ["Charlotte",3],["Clara",2],["Dana",2],["Dora",2],["Ela",2],["Elena",3],["Elin",2],
+  ["Elisa",3],["Ella",2],["Elli",2],["Elsa",2],["Emilia",4],["Emma",2],["Emmi",2],["Ena",2],
+  ["Enna",2],["Fenja",2],["Fina",2],["Flora",2],["Franka",2],["Frieda",2],["Greta",2],
+  ["Hanna",2],["Hedi",2],["Helena",3],["Ida",2],["Ina",2],["Ines",2],["Iris",2],["Isa",2],
+  ["Jana",2],["Jara",2],["Jella",2],["Jette",2],["Johanna",3],["Jola",2],["Juli",2],
+  ["Julia",3],["Juna",2],["Kaja",2],["Kira",2],["Klara",2],["Lana",2],["Lara",2],["Laura",2],
+  ["Lea",2],["Leandra",3],["Leni",2],["Lena",2],["Leonie",3],["Lia",2],["Liana",3],["Lina",2],
+  ["Linda",2],["Lisa",2],["Liv",1],["Lola",2],["Lona",2],["Lotta",2],["Lotte",2],["Luana",3],
+  ["Luisa",3],["Luna",2],["Maila",2],["Malia",3],["Malina",3],["Mara",2],["Maren",2],
+  ["Marie",2],["Marla",2],["Marlene",3],["Maya",2],["Meike",2],["Mia",2],["Mila",2],
+  ["Milena",3],["Milla",2],["Mina",2],["Mira",2],["Miriam",3],["Mona",2],["Nala",2],
+  ["Nele",2],["Nina",2],["Nola",2],["Nora",2],["Nova",2],["Ola",2],["Ona",2],["Paula",2],
+  ["Pauline",3],["Pia",2],["Rahel",2],["Rana",2],["Rea",2],["Rena",2],["Rieke",2],["Rita",2],
+  ["Romy",2],["Rosa",2],["Rosalie",3],["Runa",2],["Sana",2],["Sara",2],["Selma",2],
+  ["Senta",2],["Sina",2],["Smilla",2],["Sofia",3],["Sonja",2],["Stella",2],["Svea",2],
+  ["Tabea",3],["Talia",3],["Tamara",3],["Tara",2],["Tessa",2],["Thea",2],["Tia",2],
+  ["Tilda",2],["Tina",2],["Tora",2],["Uma",2],["Valentina",4],["Vera",2],["Vida",2],
+  ["Wilma",2],["Yara",2],["Yuna",2],["Zara",2],["Zita",2],["Zoe",2],["Zora",2],["Fee",1],
+  ["Fine",2],["Nelli",2],["Levke",2],["Merle",2],["Frida",2],["Alma",2],["Anouk",2],
+  /* unisex */
+  ["Alex",2],["Charlie",2],["Eli",2],["Jona",2],["Juno",2],["Kai",1],["Kim",1],["Luca",2],
+  ["Mika",2],["Noa",2],["Robin",2],["Sam",1],["Sascha",2],["Toni",2],["Andrea",3],["Nikita",3],
+  /* added to match starred style: Amelie / Elin / Zoe (no -a endings) */
+  ["Emilie",3],["Sophie",2],["Josefine",4],["Ottilie",3],["Amalie",3],["Aurelie",3],
+  ["Melanie",3],["Nathalie",3],["Lucie",2],["Annelie",3],["Emmelie",3],["Elodie",3],
+  ["Karin",2],["Katrin",2],["Kerstin",2],["Kristin",2],["Carolin",3],["Jasmin",2],
+  ["Aylin",2],["Ellen",2],["Helen",2],["Lynn",1],["Marlen",2],
+  ["Emmy",2],["Josie",2],["Lene",2],["Rike",2],["Lucy",2],["Fenn",1],
+  /* added to match starred style: Zoe / Lynn / Sophie (short, crisp, no -a) */
+  ["Lou",1],["Mai",1],["Bo",1],["Quinn",1],["Ren",1],["Lin",1],["Nell",1],["Fay",1],
+  ["Cleo",2],["Neve",2],["Elle",2],["Esme",2],["Vivi",2],["Belle",2],
+  ["Julie",2],["Rosie",2],["Evie",2],["Effie",2],["Lilli",2],["Milly",2],["Coco",2]
+];
+
+const VOWELS = "aeiouyäöü";
+const isVowel = c => VOWELS.includes((c||"").toLowerCase());
+
+// crude syllable estimate for the LAST NAME (vowel groups; German keeps trailing e)
+function estSyllables(word){
+  const w = (word||"").toLowerCase();
+  let groups = 0, prev = false;
+  for(const ch of w){ const v = VOWELS.includes(ch); if(v && !prev) groups++; prev = v; }
+  return Math.max(1, groups);
+}
+
+/* ---------------- State ---------------- */
+const KEY = "nameswipe.v1";
+const DEFAULT_LAST = "Dsilva";
+let state = load();
+
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if(s && s.settings) return s;
+  }catch(e){}
+  return {
+    settings:{ lastName:DEFAULT_LAST, startLetters:"", sylMin:0, sylMax:0 },
+    shortlist:[],       // [{name, starred}]
+    discarded:[],       // [name]
+    removed:[],         // [name] (taken off shortlist; never repeat)
+    current:null,
+    lastAction:null     // {type:'yes'|'no', name}
+  };
+}
+function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+
+function seenSet(){
+  const s = new Set();
+  state.shortlist.forEach(x=>s.add(x.name));
+  state.discarded.forEach(n=>s.add(n));
+  state.removed.forEach(n=>s.add(n));
+  return s;
+}
+
+/* ---------------- Flow analysis of last name ---------------- */
+function analyzeLastName(){
+  const ln = (state.settings.lastName||"").trim();
+  const clean = ln.replace(/[^a-zA-ZäöüÄÖÜ]/g,"");
+  let endVowel = null;
+  for(let i=clean.length-1;i>=0;i--){ if(isVowel(clean[i])){ endVowel = clean[i].toLowerCase(); break; } if(/[a-zäöü]/i.test(clean[i])) break; }
+  // leading consonant cluster -> clash letters
+  const clash = new Set();
+  for(const ch of clean){ if(isVowel(ch)) break; clash.add(ch.toUpperCase()); }
+  if(clash.size===0 && clean[0]) clash.add(clean[0].toUpperCase());
+  return {
+    endVowel,
+    syl: clean ? estSyllables(clean) : 2,
+    clash,
+    clusterStart: clash.size>=2
+  };
+}
+
+/* ---------------- Scoring ---------------- */
+function scoreName(entry, flow, seeds){
+  const [name, syl] = entry;
+  const start = name[0].toUpperCase();
+  const end = name[name.length-1].toLowerCase();
+  let sc = 0;
+  // Strong soft filters: names that break these appear only once the
+  // better-flowing names are used up (each violation = a big penalty,
+  // far larger than the rhythm/seed nudges and the jitter can overcome).
+  let violations = 0;
+  if(flow.endVowel && end === flow.endVowel) violations++;  // echoes surname's ending vowel
+  if(flow.clash.has(start)) violations++;                   // clashes with surname's opening
+  sc -= violations * 100;
+  // Gentle nudges within a tier:
+  // rhythm contrast
+  if(syl !== flow.syl) sc += 1; else sc -= 1.5;
+  // balance a hard onset
+  if(flow.clusterStart && isVowel(name[0])) sc += 0.6;
+  // seed weighting (only starred), capped
+  if(seeds.length){
+    let seedScore = 0;
+    const cl2 = name.slice(-2).toLowerCase();
+    for(const s of seeds){
+      if(s.start === start) seedScore += 0.5;
+      if(s.syl === syl) seedScore += 0.5;
+      if(s.last2 === cl2) seedScore += 0.6;
+      if(Math.abs(s.len - name.length) <= 1) seedScore += 0.25;
+    }
+    sc += Math.min(2, seedScore);
+  }
+  return sc;
+}
+
+function seedList(){
+  return state.shortlist.filter(x=>x.starred).map(x=>{
+    const e = NAMES.find(n=>n[0]===x.name);
+    const syl = e ? e[1] : estSyllables(x.name);
+    return { start:x.name[0].toUpperCase(), syl, last2:x.name.slice(-2).toLowerCase(), len:x.name.length };
+  });
+}
+
+function candidates(){
+  const seen = seenSet();
+  const sl = (state.settings.startLetters||"").toLowerCase().replace(/[^a-zäöü]/g,"");
+  const mn = state.settings.sylMin||0, mx = state.settings.sylMax||0;
+  return NAMES.filter(([name,syl])=>{
+    if(seen.has(name)) return false;
+    if(sl && !sl.includes(name[0].toLowerCase())) return false;
+    if(mn && syl < mn) return false;
+    if(mx && syl > mx) return false;
+    return true;
+  });
+}
+
+function pickNext(){
+  const cands = candidates();
+  if(!cands.length){ state.current = null; return; }
+  const flow = analyzeLastName();
+  const seeds = seedList();
+  let best = null, bestScore = -Infinity;
+  for(const c of cands){
+    const s = scoreName(c, flow, seeds) + Math.random()*1.2; // jitter for variety
+    if(s > bestScore){ bestScore = s; best = c; }
+  }
+  state.current = best ? best[0] : null;
+}
+
+/* ---------------- Actions ---------------- */
+function vote(kind){
+  if(!state.current) return;
+  const name = state.current;
+  if(kind==="yes"){ state.shortlist.push({name, starred:false}); }
+  else { state.discarded.push(name); }
+  state.lastAction = {type:kind, name};
+  pickNext();
+  save(); renderAll();
+}
+function undo(){
+  const a = state.lastAction;
+  if(!a) return;
+  if(a.type==="yes") state.shortlist = state.shortlist.filter(x=>x.name!==a.name);
+  else state.discarded = state.discarded.filter(n=>n!==a.name);
+  state.current = a.name;      // bring it back as the current card
+  state.lastAction = null;
+  save(); renderAll();
+}
+function toggleStar(name){
+  const it = state.shortlist.find(x=>x.name===name);
+  if(it){ it.starred = !it.starred; save(); renderShortlist(); }
+}
+function removeFromShortlist(name){
+  state.shortlist = state.shortlist.filter(x=>x.name!==name);
+  if(!state.removed.includes(name)) state.removed.push(name);
+  save(); renderAll();
+}
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove("show"), 2200);
+}
+function exportShortlist(){
+  const ln = state.settings.lastName || "";
+  const starred = state.shortlist.filter(x=>x.starred);
+  const rest = state.shortlist.filter(x=>!x.starred);
+  const lines = [];
+  lines.push(`Shortlist${ln?` (with ${ln})`:""} — ${state.shortlist.length} names`);
+  lines.push("");
+  if(starred.length){
+    lines.push("Starred (seeds):");
+    starred.forEach(x=>lines.push(`  ★ ${x.name}`));
+    lines.push("");
+  }
+  if(rest.length){
+    lines.push("Other:");
+    rest.forEach(x=>lines.push(`  ☆ ${x.name}`));
+  }
+  const text = lines.join("\n");
+
+  // 1) copy to clipboard (best effort)
+  const copy = navigator.clipboard && navigator.clipboard.writeText
+    ? navigator.clipboard.writeText(text)
+    : Promise.reject();
+  copy.then(()=>toast("Shortlist copied to clipboard")).catch(()=>{
+    // fallback: select in a temp textarea
+    try{
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); document.body.removeChild(ta);
+      toast("Shortlist copied to clipboard");
+    }catch(e){ toast("Downloaded shortlist file"); }
+  });
+
+  // 2) also download a .txt file
+  try{
+    const blob = new Blob([text], {type:"text/plain"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "nameswipe-shortlist.txt";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  }catch(e){}
+}
+function resetAll(){
+  if(!confirm("Clear your shortlist, discarded names and history? Your last name and settings stay.")) return;
+  state.shortlist = []; state.discarded = []; state.removed = []; state.current = null; state.lastAction = null;
+  pickNext(); save(); renderAll();
+}
+
+/* ---------------- Rendering ---------------- */
+const deck = document.getElementById("deck");
+
+function renderSwipe(){
+  const ln = state.settings.lastName || "";
+  deck.innerHTML = "";
+  if(!state.current){ pickNext(); }
+  if(!state.current){
+    deck.innerHTML = `<div class="empty">
+      <h2>That's the whole list</h2>
+      <p>You've seen every name that fits. Loosen the filters in Settings, or check your shortlist.</p>
+    </div>`;
+    setActions(false);
+    return;
+  }
+  const e = NAMES.find(n=>n[0]===state.current);
+  const syl = e ? e[1] : "";
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <div class="stamp yes">Yes</div>
+    <div class="stamp no">No</div>
+    <div class="fn">${state.current}</div>
+    <div class="with">with</div>
+    <div class="ln">${ln||"—"}</div>
+    <div class="meta">${syl} syllable${syl===1?"":"s"}</div>`;
+  deck.appendChild(card);
+  setActions(true);
+  attachDrag(card);
+}
+function setActions(on){
+  document.getElementById("btnNo").disabled = !on;
+  document.getElementById("btnYes").disabled = !on;
+  document.getElementById("btnUndo").disabled = !state.lastAction;
+}
+
+function renderShortlist(){
+  const wrap = document.getElementById("shortlistList");
+  const ln = state.settings.lastName || "";
+  const exportBtn = document.getElementById("btnExport");
+  exportBtn.style.display = state.shortlist.length ? "block" : "none";
+  if(!state.shortlist.length){
+    wrap.innerHTML = `<div class="empty"><h2>No names yet</h2><p>Swipe right on names you like and they'll gather here.</p></div>`;
+    return;
+  }
+  // starred first, then order added
+  const items = [...state.shortlist].sort((a,b)=> (b.starred?1:0)-(a.starred?1:0));
+  wrap.innerHTML = items.map(x=>`
+    <div class="row">
+      <button class="iconbtn star ${x.starred?'on':''}" data-star="${encodeURIComponent(x.name)}" title="Use as seed">${x.starred?'★':'☆'}</button>
+      <div class="name"><div class="fn">${x.name}</div><div class="ln">${x.name} ${ln}</div></div>
+      <button class="iconbtn" data-remove="${encodeURIComponent(x.name)}" title="Remove">🗑</button>
+    </div>`).join("");
+  wrap.querySelectorAll("[data-star]").forEach(b=>b.onclick=()=>toggleStar(decodeURIComponent(b.dataset.star)));
+  wrap.querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>removeFromShortlist(decodeURIComponent(b.dataset.remove)));
+}
+
+function renderCounts(){
+  const n = state.shortlist.length;
+  document.getElementById("hdrCount").textContent = n;
+  const badge = document.getElementById("navBadge");
+  badge.textContent = n; badge.style.display = n? "inline-block":"none";
+}
+
+function renderSettings(){
+  document.getElementById("lastName").value = state.settings.lastName || "";
+  document.getElementById("startLetters").value = state.settings.startLetters || "";
+  const mn = document.getElementById("sylMin"), mx = document.getElementById("sylMax");
+  if(!mn.options.length){
+    const optsMin = ['<option value="0">any</option>']; const optsMax = ['<option value="0">any</option>'];
+    for(let i=1;i<=4;i++){ optsMin.push(`<option value="${i}">${i}</option>`); optsMax.push(`<option value="${i}">${i}</option>`);}
+    mn.innerHTML = optsMin.join(""); mx.innerHTML = optsMax.join("");
+  }
+  mn.value = state.settings.sylMin||0;
+  mx.value = state.settings.sylMax||0;
+}
+
+function renderAll(){ renderCounts(); renderSwipe(); renderShortlist(); renderSettings(); }
+
+/* ---------------- Drag / swipe ---------------- */
+function attachDrag(card){
+  let startX=0, startY=0, dx=0, dy=0, dragging=false;
+  const stampYes = card.querySelector(".stamp.yes");
+  const stampNo = card.querySelector(".stamp.no");
+  const threshold = 110;
+
+  const down = (x,y)=>{ dragging=true; startX=x; startY=y; card.style.transition="none"; card.style.cursor="grabbing"; };
+  const move = (x,y)=>{
+    if(!dragging) return;
+    dx = x-startX; dy = y-startY;
+    card.style.transform = `translate(${dx}px, ${dy*0.4}px) rotate(${dx/18}deg)`;
+    const r = Math.min(1, Math.abs(dx)/threshold);
+    stampYes.style.opacity = dx>0? r:0;
+    stampNo.style.opacity = dx<0? r:0;
+  };
+  const up = ()=>{
+    if(!dragging) return; dragging=false; card.style.cursor="grab";
+    if(Math.abs(dx) > threshold){
+      const dir = dx>0? 1:-1;
+      card.style.transition="transform .28s ease, opacity .28s ease";
+      card.style.transform = `translate(${dir*600}px, ${dy}px) rotate(${dir*22}deg)`;
+      card.style.opacity = "0";
+      setTimeout(()=>vote(dir>0?"yes":"no"), 180);
+    }else{
+      card.style.transition="transform .25s ease";
+      card.style.transform=""; stampYes.style.opacity=0; stampNo.style.opacity=0;
+    }
+  };
+  card.addEventListener("pointerdown", e=>{ card.setPointerCapture(e.pointerId); down(e.clientX,e.clientY); });
+  card.addEventListener("pointermove", e=>move(e.clientX,e.clientY));
+  card.addEventListener("pointerup", up);
+  card.addEventListener("pointercancel", up);
+}
+
+// programmatic fly-off for button taps
+function flyAndVote(kind){
+  const card = deck.querySelector(".card");
+  if(!card){ return; }
+  const dir = kind==="yes"?1:-1;
+  card.querySelector(kind==="yes"?".stamp.yes":".stamp.no").style.opacity = 1;
+  card.style.transition="transform .28s ease, opacity .28s ease";
+  card.style.transform = `translate(${dir*600}px,0) rotate(${dir*22}deg)`;
+  card.style.opacity="0";
+  setTimeout(()=>vote(kind), 180);
+}
+
+/* ---------------- Wiring ---------------- */
+document.getElementById("btnYes").onclick = ()=>flyAndVote("yes");
+document.getElementById("btnNo").onclick = ()=>flyAndVote("no");
+document.getElementById("btnUndo").onclick = undo;
+document.getElementById("btnReset").onclick = resetAll;
+document.getElementById("btnExport").onclick = exportShortlist;
+
+document.getElementById("lastName").addEventListener("input", e=>{
+  state.settings.lastName = e.target.value;
+  // reset current card so flow re-tunes immediately
+  state.current = null; save(); renderCounts(); renderSwipe(); renderShortlist();
+});
+document.getElementById("startLetters").addEventListener("input", e=>{
+  state.settings.startLetters = e.target.value; state.current=null; save(); renderSwipe();
+});
+document.getElementById("sylMin").addEventListener("change", e=>{
+  state.settings.sylMin = +e.target.value; state.current=null; save(); renderSwipe();
+});
+document.getElementById("sylMax").addEventListener("change", e=>{
+  state.settings.sylMax = +e.target.value; state.current=null; save(); renderSwipe();
+});
+
+document.querySelectorAll("nav button").forEach(btn=>{
+  btn.onclick = ()=>{
+    document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("view-"+btn.dataset.view).classList.add("active");
+  };
+});
+
+// keyboard: arrows to vote
+document.addEventListener("keydown", e=>{
+  if(!document.getElementById("view-swipe").classList.contains("active")) return;
+  if(e.key==="ArrowRight") flyAndVote("yes");
+  if(e.key==="ArrowLeft") flyAndVote("no");
+});
+
+// first run: seed default clash letters into startLetters? No — keep empty, flow handles it.
+renderAll();
+</script>
+</body>
+</html>
